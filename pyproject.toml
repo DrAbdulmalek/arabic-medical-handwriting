@@ -14,6 +14,8 @@ dependencies = []
 
 [project.optional-dependencies]
 ocr = ["pillow>=10.0", "pytesseract>=0.3.10"]
+# جسر العقد القانوني (S2-T3 shim) — ocr-core اختياري؛ الجسر يتدهور بأمان بدونه
+core = ["marathon-ocr-core[tesseract] @ git+https://github.com/DrAbdulmalek/ocr-core.git@v0.6.0"]
 trocr = ["transformers>=4.40", "torch>=2.2", "sentencepiece>=0.2"]
 arabic = ["arabic-reshaper>=3.0", "python-bidi>=0.4.2"]
 colab = ["unsloth", "bitsandbytes", "accelerate", "peft", "trl", "datasets>=3.4.1"]
