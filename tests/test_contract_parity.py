@@ -29,6 +29,15 @@ def _sample() -> OCRResult:
     )
 
 
+def _get(out, key):
+    """وصول موحد للحقول في المسارين (كائن قانوني حي أو dict تدهور آمن)."""
+    return getattr(out, key) if HAS_OCR_CORE else out[key]
+
+
+def _meta(out):
+    return getattr(out, "meta") if HAS_OCR_CORE else out["meta"]
+
+
 def test_canonical_field_set_is_frozen():
     assert CANONICAL_FIELDS == (
         "text", "engine", "confidence", "processing_time", "error", "pages", "meta",
@@ -37,14 +46,14 @@ def test_canonical_field_set_is_frozen():
 
 def test_every_amh_field_lands_somewhere():
     out = to_canonical(_sample())
-    assert isinstance(out, dict) and set(out) == set(CANONICAL_FIELDS)
-    assert out["text"] == "نص المريض"
-    assert out["engine"] == "trocr"          # تمرير بلا إكراه
-    assert out["confidence"] == 0.95
-    assert out["processing_time"] == 1.5     # 1500ms → 1.5s (تحويل الوحدة موثق)
-    assert out["error"] is None
-    assert out["pages"] == 1                 # الافتراضي القانوني
-    meta = out["meta"]
+    assert set(out if isinstance(out, dict) else CANONICAL_FIELDS) == set(CANONICAL_FIELDS)
+    assert _get(out, "text") == "نص المريض"
+    assert _get(out, "engine") == "trocr"      # تمرير بلا إكراه
+    assert _get(out, "confidence") == 0.95
+    assert _get(out, "processing_time") == 1.5  # 1500ms → 1.5s (تحويل الوحدة موثق)
+    assert _get(out, "error") is None
+    assert _get(out, "pages") == 1              # الافتراضي القانوني
+    meta = _meta(out)
     assert meta["words"] and meta["words"][0].text == "نص"
     assert meta["language"] == "ar"
     assert meta["raw_text"] == "نص المريض الخام"
@@ -57,8 +66,7 @@ def test_every_amh_field_lands_somewhere():
 def test_engine_default_unknown_passes_through():
     res = _sample()
     res.engine = "unknown"
-    out = to_canonical(res)
-    assert out["engine"] == "unknown"
+    assert _get(to_canonical(res), "engine") == "unknown"
 
 
 def test_canonical_object_when_ocr_core_installed():
