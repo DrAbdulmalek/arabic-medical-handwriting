@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arabic-medical-handwriting"
+version = "0.1.0"
+description = "Clean-room Arabic medical handwriting OCR — عقد OCRResult + محرك موحّد (يُبنى حول 5 ملفات من omni-medical-suite)"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+# تصحيح سقالة: النواة خفيفة بلا تبعيات إلزامية — الثقيل (torch/transformers)
+# في extras. يجعل pip install -e . وCI سريعين وبلا GPU.
+dependencies = []
+
+[project.optional-dependencies]
+ocr = ["pillow>=10.0", "pytesseract>=0.3.10"]
+trocr = ["transformers>=4.40", "torch>=2.2", "sentencepiece>=0.2"]
+arabic = ["arabic-reshaper>=3.0", "python-bidi>=0.4.2"]
+colab = ["unsloth", "bitsandbytes", "accelerate", "peft", "trl", "datasets>=3.4.1"]
+app = ["streamlit>=1.36"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.setuptools]
+packages = ["ocr", "extract", "export"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

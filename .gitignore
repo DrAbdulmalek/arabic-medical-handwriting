@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+# بيانات وصور ونماذج — لا تُرفع
+data/samples/*
+!data/samples/.gitkeep
+data/corrections/*
+!data/corrections/.gitkeep
+*.session
+.env

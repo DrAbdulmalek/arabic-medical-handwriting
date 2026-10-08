@@ -1,0 +1,27 @@
+arabic-medical-handwriting/
+├── ocr/
+│   ├── __init__.py
+│   ├── contract.py            ← OCRResult
+│   ├── engine.py              ← محرك موحد (TrOCR + Tesseract + EasyOCR)
+│   ├── rtl.py                 ← من omni
+│   ├── normalize.py           ← من omni
+│   └── config.py              ← إعدادات + قائمة محركات
+├── extract/
+│   ├── __init__.py
+│   ├── fields.py              ← من omni
+│   └── correction.py          ← fuzzy match مع arabic-medical-glossary
+├── export/
+│   ├── __init__.py
+│   ├── markdown.py
+│   └── hf_dataset.py          ← للتدريب
+├── tests/
+│   ├── test_engine.py
+│   ├── test_rtl.py
+│   └── fixtures/              ← 10 صور اختبار
+├── data/
+│   ├── samples/               ← صورك
+│   └── corrections/           ← 319 تصحيح من HF
+├── app.py                     ← Streamlit بسيط
+├── pyproject.toml
+├── README.md
+└── LICENSE                    ← MIT
