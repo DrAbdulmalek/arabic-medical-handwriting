@@ -1,78 +1,128 @@
-"""محرك OCR موحّد — سقالة (multi-engine: TrOCR + Tesseract + EasyOCR).
+"""محرك الخط اليدوي — **تفويض كامل إلى ocr-core**.
 
-الخطة (محادثة 1m3ih8eveq98lv7aqc — msg251):
-  - لفّ المحركات خلف واجهة واحدة تُعيد OCRResult (من contract.py).
-  - إصلاح Mistral: لا تُختلق ثقة (0.0 = مجهولة).
-  - الترتيب: TrOCR (خط يدوي) ← EasyOCR ← Tesseract (احتياطي).
+هذا الملف لا يملك أي منطق OCR. دوره فقط:
+  1. بناء قائمة المحركات المطلوبة من ``EngineConfig`` (بناء كسول — لا يُبنى
+     محرك إلا عند أول استخدام، والأعطال تُخزَّن ولا تُعاد).
+  2. تكييف نتيجة ``ocr_core`` إلى العقد المحلي (``ocr/contract.py``) الذي
+     يبقى واجهة المشروع العامة.
+  3. فرض سياسة الثقة: ``confidence == 0.0`` تعني *مجهولة* — لا تُختلق أبداً،
+     والأخطاء تُبلَّغ عبر ``OCRResult.error`` ولا تُرفع استثناءات.
 
-حتى التنفيذ الكامل، يمكن الاعتماد على `ocr-core` المركزي مباشرة:
-    pip install "marathon-ocr-core[paddle]"
-    from ocr_core.engines.tesseract import TesseractEngine
-
-هذه الوحدة تبقى import-safe (لا تحمّل نماذج عند الاستيراد).
+المصدر الوحيد للحقيقة OCR هو ``ocr-core`` (‏v0.4.0+). أي تعديل على منطق
+المحركات/التصويت يحدث هناك، لا هنا.
 """
 from __future__ import annotations
-import logging
-import time
-from typing import Optional
 
-from .contract import OCRResult
-from .config import EngineConfig, DEFAULT
+import importlib
+import warnings
+from typing import Any, Callable
 
-logger = logging.getLogger(__name__)
+from ocr.config import EngineConfig
+from ocr.contract import OCRResult, WordBox
+
+# محركات ocr-core المتاحة كـ extras هناك (paddle/easyocr/tesseract)
+_ENGINE_FACTORIES: dict[str, tuple[str, str]] = {
+    "tesseract": ("ocr_core.engines.tesseract", "TesseractEngine"),
+    "paddle": ("ocr_core.engines.paddle", "PaddleEngine"),
+    "easyocr": ("ocr_core.engines.easyocr", "EasyOCREngine"),
+}
+
+
+def _load_engine_class(name: str) -> type:
+    module_name, class_name = _ENGINE_FACTORIES[name]
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
+
+
+def _adapt_words(raw_words: Any) -> list[WordBox]:
+    """تكييف كلمات ocr_core إلى WordBox المحلي.
+
+    يقبل كائنات أو dicts — يقرأ الحقول الشائعة فقط ويتجاهل الباقي.
+    إن اختلفت أسماء الحقول في ocr-core عدّل هنا وحدها.
+    """
+    boxes: list[WordBox] = []
+    for w in raw_words or []:
+        get = w.get if isinstance(w, dict) else lambda k, d=None: getattr(w, k, d)
+        text = get("text", "")
+        if not text:
+            continue
+        boxes.append(
+            WordBox(
+                text=text,
+                bbox=get("bbox", get("box")),
+                confidence=get("confidence", 0.0),  # 0.0 = مجهولة — لا اختلاق
+            )
+        )
+    return boxes
+
+
+def _adapt_result(core_result: Any, engine_name: str) -> OCRResult:
+    """تكييف OCRResult الخاصة بـ ocr-core إلى العقد المحلي."""
+    get = core_result.get if isinstance(core_result, dict) else lambda k, d=None: getattr(core_result, k, d)
+    return OCRResult(
+        text=get("text", "") or "",
+        words=_adapt_words(get("words")),
+        confidence=get("confidence", 0.0),
+        engine=engine_name,
+        error=get("error"),
+    )
 
 
 class HandwritingEngine:
-    """محرك موحّد — يلفّ المحركات المتاحة ويُعيد OCRResult."""
+    """واجهة المشروع العامة — تفوّض كل شيء إلى ocr-core.
 
-    def __init__(self, config: Optional[EngineConfig] = None):
-        self.config = config or DEFAULT
-        self._backends: dict = {}
+    الاستخدام::
+        engine = HandwritingEngine(EngineConfig(engines=["tesseract", "paddle"]))
+        result = engine.process_image("rx.png")
+        if result.error: ...        # فشل — لا استثناء
+    """
 
-    def available(self) -> list:
-        """قائمة المحركات المتاحة فعليًا في هذه البيئة."""
-        avail = []
-        try:
-            import pytesseract, shutil
-            if shutil.which("tesseract"):
-                avail.append("tesseract")
-        except Exception:
-            pass
-        try:
-            import easyocr  # noqa
-            avail.append("easyocr")
-        except Exception:
-            pass
-        try:
-            import transformers, torch  # noqa
-            avail.append("trocr")
-        except Exception:
-            pass
-        return avail
+    def __init__(self, config: EngineConfig | None = None):
+        self.config = config or EngineConfig()
+        self._built: dict[str, Any] = {}
+        self._failed: set[str] = set()
 
+    # ── بناء كسول ──────────────────────────────
+    def _get_engine(self, name: str) -> Any | None:
+        if name in self._built:
+            return self._built[name]
+        if name in self._failed:
+            return None
+        try:
+            engine = _load_engine_class(name)()
+        except Exception as exc:  # غياب extra أو تعذر التحميل — ليس فشل صورة
+            self._failed.add(name)
+            warnings.warn(f"[handwriting] المحرك '{name}' غير متاح: {exc}", stacklevel=2)
+            return None
+        self._built[name] = engine
+        return engine
+
+    def _roster(self) -> dict[str, Any]:
+        roster = {}
+        for name in self.config.engines:
+            engine = self._get_engine(name)
+            if engine is not None:
+                roster[name] = engine
+        return roster
+
+    # ── الواجهة العامة ─────────────────────────
     def process_image(self, image_path: str) -> OCRResult:
-        """OCR لصورة — يستخدم أول محرك متاح (سقالة: tesseract)."""
-        start = time.perf_counter()
-        engines = self.available()
-        if not engines:
+        roster = self._roster()
+        if not roster:
             return OCRResult(
-                engine="none", error="لا محرك متاح — ثبّت tesseract/easyocr/trocr",
-                duration_ms=(time.perf_counter() - start) * 1000,
+                text="", confidence=0.0, engine=None,
+                error="no_engines_available: لا محرك OCR متاح (ثبّت extras في ocr-core)",
             )
-        # المسار الافتراضي الحالي: tesseract (الأخف). TrOCR يُضاف عند التنفيذ.
         try:
-            import pytesseract
-            from PIL import Image
-            text = pytesseract.image_to_string(Image.open(image_path),
-                                               lang=self.config.language)
-            return OCRResult(
-                text=text.strip(), raw_text=text, engine="tesseract",
-                confidence=0.0,  # tesseract عبر image_to_string: مجهولة (0.0)
-                language=self.config.language,
-                duration_ms=(time.perf_counter() - start) * 1000,
-            )
-        except Exception as e:
-            return OCRResult(
-                engine="tesseract", error=f"{type(e).__name__}: {e}",
-                duration_ms=(time.perf_counter() - start) * 1000,
-            )
+            if len(roster) == 1:
+                name, engine = next(iter(roster.items()))
+                return _adapt_result(engine.process_image(image_path), name)
+            from ocr_core.engines.ensemble import EnsembleEngine
+            best = EnsembleEngine(roster).process_image(image_path)
+            # EnsembleEngine يرجع أفضل نتيجة (ثقة×طول×صلاحية) — التكييف يحدد محركها
+            for name, engine in roster.items():
+                if engine is getattr(best, "_engine", None):
+                    return _adapt_result(best, name)
+            return _adapt_result(best, "+".join(roster))
+        except Exception as exc:
+            return OCRResult(text="", confidence=0.0, engine=None, error=f"engine_failure: {exc}")
