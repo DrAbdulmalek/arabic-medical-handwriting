@@ -8,12 +8,15 @@ version = "0.1.0"
 description = "Clean-room Arabic medical handwriting OCR — عقد OCRResult + محرك موحّد (يُبنى حول 5 ملفات من omni-medical-suite)"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-# تصحيح سقالة: النواة خفيفة بلا تبعيات إلزامية — الثقيل (torch/transformers)
-# في extras. يجعل pip install -e . وCI سريعين وبلا GPU.
-dependencies = []
+# قرار P0-4 (2026-10-11): تفويض كامل إلى ocr-core — تبعية إلزامية.
+# لا منطق OCR/RTL/تطبيع محلي بعد الآن؛ ocr/ وextract/ مفوَّضة حرفيًا إلى ocr_core.*.
+dependencies = [
+    # P0-4: التفويض الكامل — الحزمة غير منشورة على PyPI؛ تُثبَّت من الوسم المستقر
+    "marathon-ocr-core @ git+https://github.com/DrAbdulmalek/ocr-core.git@v0.6.0",
+]
 
 [project.optional-dependencies]
-ocr = ["pillow>=10.0", "pytesseract>=0.3.10"]
+ocr = ["pytesseract>=0.3.10"]
 trocr = ["transformers>=4.40", "torch>=2.2", "sentencepiece>=0.2"]
 arabic = ["arabic-reshaper>=3.0", "python-bidi>=0.4.2"]
 colab = ["unsloth", "bitsandbytes", "accelerate", "peft", "trl", "datasets>=3.4.1"]

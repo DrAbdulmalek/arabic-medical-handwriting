@@ -1,81 +1,70 @@
 # arabic-medical-handwriting
 
-مشروع **OCR للخط اليدوي الطبي العربي** — نظيف (clean-room)، يُبنى حول
-5 ملفات منتقاة من `omni-medical-suite` بدل تدقيق الـmonorepo كله (3,832 ملفًا).
+مشروع **OCR للخط اليدوي الطبي العربي** — عقد `OCRResult` موحّد، مع تفويض منطق OCR وRTL والتطبيع واستخراج الحقول إلى `ocr-core` المركزي.
 
-> **الحالة: سقالة + عقد منفَّذ.** `ocr/contract.py` (عقد `OCRResult`/`WordBox`)
-> منفَّذ ومُختبَر (5 اختبارات). المحركات والمعالجة (rtl/normalize/engine/
-> extract/export) **سقالة import-safe** — الخطة نقلها من omni أو تفويضها
-> إلى `ocr-core` المركزي.
->
-> المصدر: محادثة DeepSeek `1m3ih8eveq98lv7aqc` (رسائل 250-259).
+> **الحالة:** تفويض كامل مطبّق على فرع التطوير. `ocr/contract.py` يبقى عقد الواجهة المحلية، بينما `engine/rtl/normalize/fields` واجهات رفيعة حول `ocr_core.*`. لا يُعد هذا المستند إثباتًا لنجاح الاختبارات؛ راجع حالة CI على طلب الدمج.
 
-## القرار المعماري (من المحادثة)
+## لماذا التفويض؟
 
-بدل تدقيق `omni-medical-suite` بالكامل — نأخذ منه **5 ملفات فقط** ونبني
-مشروعًا نظيفًا حولها:
-
-| من omni | إلى هنا | لماذا |
-|---|---|---|
-| `src/ocr/rtl_utils.py` | `ocr/rtl.py` | معالجة RTL — نادرة، لا تُكتب من الصفر |
-| `src/ocr/normalization.py` | `ocr/normalize.py` | التطبيع العربي |
-| `src/ocr/field_extractor.py` | `extract/fields.py` | استخراج حقول طبية |
-| نمط `packages/omni_ocr/adapter.py` (OCRResult) | `ocr/contract.py` ✅ **منفَّذ** | عقد موحّد |
-| نمط `handwriting/.../ocr_engine.py` | `ocr/engine.py` | محرك متعدد — مع **إصلاح Mistral** (لا ثقة مخترعة) |
-
-**لا monorepo، لا `packages/*`، لا 3,832 ملفًا.**
+يمنع التفويض إنشاء نسخ متعددة من منطق OCR والتطبيع. يبقى في هذا المستودع العقد والسياسات الخاصة بالمستهلك فقط، بينما يبقى `ocr-core` مصدر الحقيقة لمحركات OCR وRTL والتطبيع واستخراج الحقول.
 
 ## البنية
 
 ```
 ocr/
-├── contract.py     ✅ OCRResult + WordBox (منفَّذ + مُختبَر)
-├── engine.py       🔧 HandwritingEngine — multi-engine سقالة (tesseract احتياطي)
-├── rtl.py          🔧 reshape/detect_direction (نقل من omni)
-├── normalize.py    🔧 normalize_for_search (non-destructive)
-└── config.py       🔧 EngineConfig (قائمة محركات + حد ثقة)
+├── contract.py     عقد OCRResult + WordBox
+├── engine.py       HandwritingEngine — بناء كسول وتكييف النتائج وEnsemble
+├── rtl.py          fix_rtl عبر ArabicRTLFixer.fix_text + سياسة detect_direction المحلية
+├── normalize.py    normalize_for_search عبر arabic_normalize
+└── config.py       EngineConfig
 extract/
-├── fields.py       🔧 extract_doses (حارس أرقام)
-└── correction.py   🔧 يفوّض إلى ocr-core corrections_ar
+├── fields.py       extract_fields عبر ArabicMedicalFieldExtractor + حارس الجرعات
+└── correction.py   تفويض التصحيح العربي إلى ocr-core
 export/
-└── hf_dataset.py   🔧 dataset card + export_snippets (سقالة)
-unsloth_finetune.py 🔧 تدريب على Colab (Unsloth) — 12 خلية مُجمّعة
-tests/              ✅ test_contract.py (5) + test_stubs.py
+└── hf_dataset.py   سقالة بطاقة مجموعة البيانات وتصدير المقاطع
+unsloth_finetune.py تدريب على Colab (Unsloth)
+tests/              اختبارات العقد والتفويض والتوافق مع ocr-core
 ```
-✅ منفَّذ · 🔧 سقالة import-safe
 
-## سياسة الثقة (محفوظة من ocr-core)
+## سياسة الثقة
 
-`confidence == 0.0` = **غير معروفة** — لا تُختلق درجة أبدًا. المحركات تبلّغ
-الأخطاء عبر `OCRResult.error` ولا ترفع استثناءات. هذا هو "إصلاح Mistral"
-المشار إليه في الخطة.
+`confidence == 0.0` تعني أن الثقة **غير معروفة**؛ لا تُختلق درجة. تُعرض الأخطاء عبر `OCRResult.error` حيث يدعم المحرك ذلك.
 
 ## التثبيت والتشغيل
 
 ```bash
-pip install -e ".[dev]"          # سقالة + اختبارات (خفيف، بلا GPU)
-pytest -q                        # 5+ اختبارات
+# تثبيت المشروع وتبعيات التطوير؛ يعتمد على ocr-core من الوسم v0.6.0
+pip install -e ".[dev]"
+pytest -q
 
-pip install -e ".[ocr,arabic]"   # لمحرك tesseract + reshaping فعلي
-pip install -e ".[trocr]"        # لـ TrOCR (يحتاج torch)
+# تثبيت ocr-core مع محرك اختياري من الوسم نفسه (الحزمة ليست معتمدة على PyPI)
+pip install "marathon-ocr-core[tesseract] @ git+https://github.com/DrAbdulmalek/ocr-core.git@v0.6.0"
+# البدائل المدعومة في هذا الغلاف: [paddle] أو [easyocr]؛ ocr-core يوفّر extra باسم [surya] لكن لا يوفّر هذا الغلاف محول Surya في v0.6.0
 
-# التدريب على Colab (GPU):
-#   افتح Colab → T4 GPU → الصق خلايا unsloth_finetune.py
+# تبعيات تدريب TrOCR (قد تتطلب تنزيل نماذج وموارد كبيرة)
+pip install -e ".[trocr]"
+
+# التدريب على Colab (GPU): افتح Colab، اختر T4، ثم استخدم خلايا unsloth_finetune.py
 ```
 
-## التدريب (unsloth_finetune.py)
+إضافة `arabic` (arabic-reshaper/python-bidi) تبقى اختيارية لأدوات العرض أو الاختبارات الذهبية، وليست شرطًا لمسار RTL المفوّض إلى `ocr-core`.
 
-سكربت Colab كامل (12 خلية) لضبط نموذج عربي (Qwen2.5/TrOCR) عبر Unsloth على
-T4 GPU مجاني. خلايا: تثبيت Unsloth ← تحميل بيانات ← LoRA ← تدريب ← حفظ ← رفع HF.
+## تنسيق الإصدارات
+
+| المستهلك | إصدار `ocr-core` المثبّت |
+|---|---|
+| `arabic-medical-handwriting` | `v0.6.0` |
+| `marathon-suite` | يجب أن يطابق `v0.6.0` حتى ترقية منسقة |
+
+عند ترقية `ocr-core`، حدّث الـ pin في المستهلكين معًا، ثم شغّل `pytest -q` في `arabic-medical-handwriting` وبوابة التكامل في `marathon-suite`. لا ترقِّ أحدهما منفردًا.
 
 ## العلاقة بالمستودعات الأخرى
 
-- **ocr-core**: المحرك المركزي — `extract/correction.py` يفوّض إليه، ويمكن
-  استخدام `ocr_core.engines` مباشرة بدل `ocr/engine.py`.
-- **omni-handwriting-samples-private**: مصدر عينات الخط اليدوي (S-series).
-- **omni-medical-suite**: مصدر الـ5 ملفات (rtl/normalize/field_extractor).
+- `ocr-core` (`marathon-ocr-core`): المصدر المركزي لمنطق OCR وRTL والتطبيع واستخراج الحقول.
+- `marathon-suite`: المنسّق؛ يجب أن يطابق pin الخاص به إصدار هذا المشروع.
+- `omni-handwriting-samples-private`: مصدر عينات الخط اليدوي الخاصة.
+- `omni-medical-suite`: المصدر التاريخي لبعض العقود.
 
 ## الترخيص
 
-MIT (الكود). النماذج: TrOCR (MIT)، AraBERT (Apache-2.0)، Qwen (Apache-2.0).
-بيانات التدريب (إن أُخذت من omni-handwriting-samples-private) خاصة.
+الكود: MIT. تحقّق من تراخيص كل نموذج وبيانات خارجية قبل إعادة توزيعها. بيانات التدريب المأخوذة من `omni-handwriting-samples-private` تبقى خاصة.

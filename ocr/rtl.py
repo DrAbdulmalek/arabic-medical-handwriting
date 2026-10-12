@@ -1,25 +1,56 @@
-"""معالجة RTL/BiDi — سقالة.
+"""معالجة RTL — **تفويض حرفي إلى ocr-core** + سياسة اتجاه على الحافة.
 
-الخطة: نقل `omni-medical-suite/src/ocr/rtl_utils.py` (معالجة عربية نادرة،
-لا تُكتب من الصفر). حتى النقل، هذه الوحدة توفر واجهة مستقرة.
+لا يوجد أي منطق إصلاح RTL في هذا المشروع. النسخة المحلية السابقة (المنقولة
+من omni-medical-suite) حُذفت عمداً لتفادي نسخة ثالثة متفحتة من نفس الكود.
+مصدر الحقيقة الوحيد للإصلاح: ``ocr_core.rtl_utils`` (‏ArabicRTLFixer).
+
+التوافق مع ocr-core الفعلي (تحقق 2026-10-11):
+  - دالة الإصلاح الحقيقية: ``fix_text(text, *, force=False)``
+    (البدائل fix/fix_rtl تُجرَّب احتياطاً للتوافق مع حقن الاختبارات).
+  - ``detect_direction`` غير موجودة في ocr-core إطلاقاً — تُشتق هنا
+    كسياسة اتجاه نقية (نطاقات يونيكود العربية) بدون اعتماد على شكل
+    الفيكسر: rtl / mixed / ltr.
+  - حل كسول (lazy) عند كل نداء حتى تعمل الحقن الوهمية في الاختبارات
+    بغضّ النظر عن ترتيب الاستيراد.
 """
 from __future__ import annotations
 
+_FIX_METHODS = ("fix_text", "fix", "fix_rtl")  # الحقيقي أولًا ثم بدائل توافق
 
-def reshape_arabic(text: str) -> str:
-    """يعيد تشكيل العربية للعرض (سقالة — النقل من omni)."""
-    try:
-        import arabic_reshaper
-        from bidi.algorithm import get_display
-        return get_display(arabic_reshaper.reshape(text))
-    except ImportError:
-        return text  # تراجع آمن: بلا reshaping
+
+def _get_fixer():
+    from ocr_core.rtl_utils import ArabicRTLFixer
+
+    return ArabicRTLFixer()
+
+
+def _is_arabic_char(ch: str) -> bool:
+    return (
+        "\u0600" <= ch <= "\u06FF"
+        or "\u0750" <= ch <= "\u077F"
+        or "\u08A0" <= ch <= "\u08FF"
+        or "\uFB50" <= ch <= "\uFDFF"
+        or "\uFE70" <= ch <= "\uFEFF"
+    )
+
+
+def fix_rtl(text: str) -> str:
+    """يصحح ترتيب الحروف/الكلمات العربية المعكوسة. تفويض حرفي."""
+    fixer = _get_fixer()
+    for name in _FIX_METHODS:
+        fix = getattr(fixer, name, None)
+        if fix is not None:
+            return fix(text)
+    raise AttributeError(
+        "ocr_core.rtl_utils.ArabicRTLFixer بلا fix_text/fix/fix_rtl — "
+        "حدّث _FIX_METHODS هنا ليطابق ocr-core"
+    )
 
 
 def detect_direction(text: str) -> str:
-    """rtl | ltr | mixed — يعتمد على نسبة الحروف العربية."""
-    ar = sum(1 for c in text if "\u0600" <= c <= "\u06FF")
-    la = sum(1 for c in text if c.isascii() and c.isalpha())
-    if ar and la:
+    """'rtl' أو 'ltr' أو 'mixed' — سياسة اتجاه نطاقات يونيكود (حافة المشروع)."""
+    has_arabic = any(_is_arabic_char(ch) for ch in text)
+    has_latin = any(ch.isascii() and ch.isalpha() for ch in text)
+    if has_arabic and has_latin:
         return "mixed"
-    return "rtl" if ar >= la else "ltr"
+    return "rtl" if has_arabic else "ltr"

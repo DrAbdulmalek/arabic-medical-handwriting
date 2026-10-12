@@ -1,21 +1,39 @@
-"""تطبيع النص العربي — سقالة.
+"""التطبيع العربي — **تفويض إلى ocr-core** (‏non-destructive للعرض).
 
-الخطة: نقل `omni-medical-suite/src/ocr/normalization.py` (40+ mapping،
-تشكيل، خلط عربي/إنجليزي). حتى النقل، واجهة مستقرة.
+التطبيع هنا مخصص للمطابقة/البحث فقط، ولا يمس النص الأصلي المعروض.
+مصدر الحقيقة: ``ocr_core.postprocess.normalization``.
 
-ملاحظة: هذا "تطبيع للبحث/المطابقة" — لا يغيّر النص القانوني المحفوظ
-(canonical preserved) وفق سياسة ocr-core.
+التوافق مع ocr-core الفعلي (تحقق 2026-10-11): الدوال الحقيقية
+``arabic_normalize`` (خفيف — للمطابقة) و``arabic_strong_normalize``
+(مع القاموس الطبي). لا وجود لـ normalize_for_search/normalize هناك.
+الحل كسول عند كل نداء — يتبع ما هو مسجّل في sys.modules لحظة النداء
+(يدعم حقن ocr_core الوهمي في الاختبارات بغضّ النظر عن ترتيب الاستيراد).
 """
 from __future__ import annotations
-import re
 
-_DIACRITICS = re.compile(r"[\u064B-\u0652\u0670]")
+import importlib
+
+# مسارات محتملة حسب تطور ocr-core — جرّبها بالترتيب (الحقيقي أولًا)
+_CANDIDATES = [
+    ("ocr_core.postprocess.normalization", "arabic_normalize"),
+    ("ocr_core.postprocess.normalization", "arabic_strong_normalize"),
+    ("ocr_core.postprocess.normalization", "normalize_for_search"),
+    ("ocr_core.postprocess.normalization", "normalize"),
+]
+
+
+def _resolve():
+    for module_name, func_name in _CANDIDATES:
+        try:
+            return getattr(importlib.import_module(module_name), func_name)
+        except (ImportError, AttributeError):
+            continue
+    raise ImportError(
+        "تعذر إيجاد دالة التطبيع في ocr-core. افحص ocr_core/postprocess/normalization.py "
+        "وحدّث قائمة _CANDIDATES في ocr/normalize.py"
+    )
 
 
 def normalize_for_search(text: str) -> str:
-    """تطبيع غير مدمر للمطابقة (تشكيل + أليفات + مسافات)."""
-    t = _DIACRITICS.sub("", text or "")
-    t = t.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-    t = t.replace("ى", "ي").replace("ة", "ه")
-    t = re.sub(r"\s+", " ", t)
-    return t.strip()
+    """تطبيع آمن للمطابقة — تفويض حرفي إلى ocr-core. لا يدمر الأصل."""
+    return _resolve()(text)
