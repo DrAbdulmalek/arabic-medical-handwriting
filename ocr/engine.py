@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import importlib
 import warnings
-from typing import Any, Callable
+from typing import Any
 
 from ocr.config import EngineConfig
 from ocr.contract import OCRResult, WordBox
