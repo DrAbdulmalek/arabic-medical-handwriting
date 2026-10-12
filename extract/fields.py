@@ -34,4 +34,7 @@ def extract_fields(text: str) -> dict:
 def extract_doses(text: str) -> dict:
     """حقول الجرعات فقط. بلا حقول → ‏{} وليس اختلاقاً."""
     fields = extract_fields(text)
-    return {\n        k: v for k, v in fields.items()\n        if v not in (None, "", []) and any(h in k.lower() for h in _DOSAGE_HINTS)\n    }
+    return {
+        k: v for k, v in fields.items()
+        if v not in (None, "", []) and any(h in k.lower() for h in _DOSAGE_HINTS)
+    }
