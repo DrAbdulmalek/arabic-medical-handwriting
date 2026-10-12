@@ -39,7 +39,7 @@ pytest -q
 
 # تثبيت ocr-core مع محرك اختياري من الوسم نفسه (الحزمة ليست معتمدة على PyPI)
 pip install "marathon-ocr-core[tesseract] @ git+https://github.com/DrAbdulmalek/ocr-core.git@v0.6.0"
-# البدائل المتاحة في ocr-core v0.6.0: [paddle] أو [easyocr] أو [surya]
+# البدائل المدعومة في هذا الغلاف: [paddle] أو [easyocr]؛ ocr-core يوفّر extra باسم [surya] لكن لا يوفّر هذا الغلاف محول Surya في v0.6.0
 
 # تبعيات تدريب TrOCR (قد تتطلب تنزيل نماذج وموارد كبيرة)
 pip install -e ".[trocr]"
