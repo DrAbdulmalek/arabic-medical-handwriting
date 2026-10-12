@@ -1,7 +1,7 @@
 """استخراج الحقول الطبية — **تفويض إلى ocr-core** مع حارس أرقام.
 
 الاستخراج الكامل يحدث في ``ocr_core.postprocess.field_extractor``
-(‏ArabicMedicalFieldExtractor). هذا الملف يضيف فقط السياسة المحلية:
+(ArabicMedicalFieldExtractor). هذا الملف يضيف فقط السياسة المحلية:
 ``extract_doses`` يُرجع حقول الجرعات **فقط** ويحمي الأرقام من أي تصحيح
 (الحارس موجود أيضاً في ميثاق ocr-core — هذا دفاع مزدوج عند الحواف).
 """
@@ -32,7 +32,7 @@ def extract_fields(text: str) -> dict:
 
 
 def extract_doses(text: str) -> dict:
-    """حقول الجرعات فقط. بلا حقول → ‏{} وليس اختلاقاً."""
+    """حقول الجرعات فقط. بلا حقول → {} وليس اختلاقاً."""
     fields = extract_fields(text)
     return {
         k: v for k, v in fields.items()
