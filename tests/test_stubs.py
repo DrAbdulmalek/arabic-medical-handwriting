@@ -62,6 +62,24 @@ def test_fields_extract_doses_returns_dict_guard():
     assert isinstance(d, dict) and d == {}
 
 
+def test_fields_extract_doses_filters_empty_values(monkeypatch):
+    import extract.fields as fields
+
+    monkeypatch.setattr(
+        fields,
+        "extract_fields",
+        lambda _text: {
+            "dose": None,
+            "dosage": "",
+            "dose_units": [],
+            "dose_amount": "500",
+            "patient_name": "مريض",
+        },
+    )
+
+    assert fields.extract_doses("أي نص") == {"dose_amount": "500"}
+
+
 def test_correction_delegates_safely():
     from extract.correction import correct_arabic
 
