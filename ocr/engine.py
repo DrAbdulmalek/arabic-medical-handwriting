@@ -8,7 +8,7 @@
   3. فرض سياسة الثقة: ``confidence == 0.0`` تعني *مجهولة* — لا تُختلق أبداً،
      والأخطاء تُبلَّغ عبر ``OCRResult.error`` ولا تُرفع استثناءات.
 
-المصدر الوحيد للحقيقة OCR هو ``ocr-core`` (‏v0.6.0). أي تعديل على منطق
+المصدر الوحيد للحقيقة OCR هو ``ocr-core`` (v0.6.0). أي تعديل على منطق
 المحركات/التصويت يحدث هناك، لا هنا.
 """
 from __future__ import annotations
@@ -42,7 +42,7 @@ def _adapt_words(raw_words: Any) -> list[WordBox]:
     """
     boxes: list[WordBox] = []
     for w in raw_words or []:
-        get = w.get if isinstance(w, dict) else lambda k, d=None: getattr(w, k, d)
+        get = w.get if isinstance(w, dict) else lambda k, d=None, _w=w: getattr(_w, k, d)
         text = get("text", "")
         if not text:
             continue
@@ -90,7 +90,7 @@ class HandwritingEngine:
             return None
         try:
             engine = _load_engine_class(name)()
-        except Exception as exc:  # غياب extra أو تعذر التحميل — ليس فشل صورة
+        except Exception as exc:  # noqa: BLE001 — غياب extra أو تعذر التحميل يُسجّل كتعذر محرك
             self._failed.add(name)
             warnings.warn(f"[handwriting] المحرك '{name}' غير متاح: {exc}", stacklevel=2)
             return None
@@ -124,5 +124,5 @@ class HandwritingEngine:
                 if engine is getattr(best, "_engine", None):
                     return _adapt_result(best, name)
             return _adapt_result(best, "+".join(roster))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — واجهة المحرك لا تسرّب استثناءات إلى المستهلك
             return OCRResult(text="", confidence=0.0, engine=None, error=f"engine_failure: {exc}")
