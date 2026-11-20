@@ -1,4 +1,10 @@
-"""عقد OCRResult — الواجهة الموحدة لكل المحركات."""
+"""عقد OCRResult المحلي — الواجهة الحالية لكل محركات هذا المستودع.
+
+ملاحظة S2-T3 (قرار المالك 2026-10-08): العقد القانوني الموحد للمحفظة هو
+OCRResult في ocr-core (7 حقول). هذا الشكل المحلي يبقى واجهة التشغيل هنا،
+والتحويل نحو القانوني عبر ocr/canonical.py::to_canonical مع اختبار
+تكافؤ مجمد (tests/test_contract_parity.py).
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
